@@ -1,0 +1,56 @@
+[Unit]
+Description=BME680 Sensor Collector (Node.js)
+After=network.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# ── Identity ────────────────────────────────────────────────────────
+# Run as a dedicated low-privilege user for security.
+# Create with: sudo useradd --system --no-create-home sensor-collector
+User=sensor-collector
+Group=sensor-collector
+
+# ── Working directory & entry point ─────────────────────────────────
+# Adjust WorkingDirectory and ExecStart to match where you deployed
+# collector.js on your server.
+WorkingDirectory=/opt/esp-bme
+
+ExecStart=/usr/bin/node /opt/esp-bme/collector.js
+
+# ── Restart policy ──────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+# ── Environment ─────────────────────────────────────────────────────
+# Override PORT here if you don't want the default (3000)
+Environment=NODE_ENV=production
+# Environment=PORT=3000
+
+# Uncomment to load secrets from a separate env file instead:
+# EnvironmentFile=/etc/bme680-collector/env
+
+# ── Logging ─────────────────────────────────────────────────────────
+# Stdout/stderr go to journald automatically.
+# View with: journalctl -u bme680-collector -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=esp-bme
+
+# ── Hardening ───────────────────────────────────────────────────────
+# Lock down the service so it can't interfere with the rest of the OS.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/esp-bme
+
+# Allow binding to ports > 1024 only (Node default 3000 is fine).
+# If you change PORT to 80 you'll also need: AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

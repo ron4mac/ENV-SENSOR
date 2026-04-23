@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ENV Sensor — BME680</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500&display=swap');
+  :root {
+    --bg:#0b0f14; --surface:#111820; --border:#1e2a36;
+    --accent:#00e5c8; --accent2:#ff6b35; --accent3:#a78bfa;
+    --accent4:#34d399; --accent5:#fbbf24;
+    --text:#e2eaf3; --muted:#c1cad3;
+    --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-weight:300;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem 1rem 4rem;}
+  header{width:100%;max-width:960px;display:flex;align-items:baseline;gap:1.2rem;margin-bottom:2.4rem;border-bottom:1px solid var(--border);padding-bottom:1rem;}
+  header h1{font-family:'Space Mono',monospace;font-size:1.15rem;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;}
+  header .sub{font-size:.78rem;color:var(--muted);letter-spacing:.04em;}
+  .status-dot{margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .4s;}
+  .status-dot.ok{background:var(--good);box-shadow:0 0 8px var(--good);}
+  .status-dot.err{background:var(--bad);box-shadow:0 0 8px var(--bad);}
+  .status-dot.poll{background:var(--warn);box-shadow:0 0 8px var(--warn);animation:blink .8s infinite;}
+  .rfu{margin-left:auto;background: var(--border);}
+  .rfu:hover{background:var(--accent5);opacity:.5;}
+  .rfu.wait{background:var(--accent3);animation:blink 2s infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+  .config{width:100%;max-width:960px;display:flex;flex-wrap:wrap;gap:.7rem;margin-bottom:1.8rem;align-items:center;}
+  .config label{font-size:.78rem;color:var(--muted);white-space:nowrap;}
+  .config input,.config select{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:.82rem;padding:.4rem .7rem;border-radius:4px;outline:none;transition:border-color .2s;}
+  .config input:focus,.config select:focus{border-color:var(--accent);}
+  .config input[type=number]{width:80px;}
+  button{background:var(--accent);color:#000;border:none;font-family:'Space Mono',monospace;font-size:.8rem;font-weight:700;letter-spacing:.05em;padding:.45rem 1.1rem;border-radius:4px;cursor:pointer;transition:opacity .15s,transform .1s;}
+  button:hover{opacity:.85;}button:active{transform:scale(.97);}
+  button.stop{background:var(--bad);color:#fff;}
+  .cards{width:100%;max-width:960px;display:grid;grid-template-columns:repeat(5,1fr);gap:.85rem;margin-bottom:1.8rem;}
+  @media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:420px){.cards{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.2rem 1rem 1rem;position:relative;overflow:hidden;}
+  .card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--card-accent,var(--accent));}
+  .card-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:.4rem;}
+  .card-value{font-family:'Space Mono',monospace;font-size:1.75rem;font-weight:700;color:var(--card-accent,var(--accent));line-height:1;transition:color .4s;}
+  .card-unit{font-size:.78rem;color:var(--muted);margin-top:.25rem;font-family:'Space Mono',monospace;}
+  .card-sub{font-size:.68rem;color:var(--muted);margin-top:.5rem;}
+  .iaq-excellent{--card-accent:#22c55e;}.iaq-good{--card-accent:#84cc16;}.iaq-light{--card-accent:#fbbf24;}.iaq-moderate{--card-accent:#f97316;}.iaq-heavy{--card-accent:#ef4444;}.iaq-severe{--card-accent:#dc2626;}
+  .iaq-bar-wrap{width:100%;max-width:960px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.1rem 1.2rem;margin-bottom:1.8rem;}
+  .iaq-bar-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.7rem;}
+  .iaq-track{position:relative;height:10px;border-radius:5px;background:linear-gradient(to right,#22c55e,#84cc16,#fbbf24,#f97316,#ef4444,#dc2626);}
+  .iaq-needle{position:absolute;top:-4px;width:3px;height:18px;background:#fff;border-radius:2px;transform:translateX(-50%);transition:left .6s ease;box-shadow:0 0 6px rgba(255,255,255,.6);}
+  .iaq-scale{display:flex;justify-content:space-between;margin-top:.4rem;font-family:'Space Mono',monospace;font-size:.65rem;color:var(--muted);}
+  .chart-wrap{width:100%;max-width:960px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.2rem 1.2rem .8rem;margin-bottom:1.6rem;}
+  .chart-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.8rem;}
+  .chart-tabs{display:flex;gap:.5rem;margin-bottom:.8rem;}
+  .tab{background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Space Mono',monospace;font-size:.72rem;padding:.3rem .7rem;border-radius:4px;cursor:pointer;transition:all .15s;}
+  .tab.active{background:var(--accent);color:#000;border-color:var(--accent);}
+  .graph{position:relative;}
+  canvas{width:100%!important;display:block;}
+  #scrub{position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;}
+  #scrbln{height:0;width:0;border-right:1px solid #999;}
+  #sdetail{font-family:monospace;display:inline-block;float: right;}
+  .log-wrap{width:100%;max-width:960px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.2rem;}
+  .log-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem;}
+  #log{font-family:'Space Mono',monospace;font-size:.72rem;color:var(--muted);max-height:160px;overflow-y:auto;line-height:1.7;}
+  #log .ok{color:var(--good);}#log .err{color:var(--bad);}
+  .placeholder{font-family:'Space Mono',monospace;font-size:1.6rem;color:var(--border);}
+  .last-seen{font-size:.72rem;color:var(--muted);font-family:'Space Mono',monospace;}
+  .last-seen.alert{background:var(--warn);color:var(--bg);padding:.25rem .5rem;animation:blink 2s infinite;}
+</style>
+</head>
+<body>
+<header>
+  <h1>⬡ ENV SENSOR</h1>
+  <span class="sub">ESP32-C6 / BME680 · Push mode</span>
+  <span class="status-dot" id="dot"></span>
+</header>
+<div class="config">
+  <label>Poll server every</label>
+  <select id="interval">
+    <option value="30000" selected>30 s</option>
+    <option value="60000">1 m</option>
+    <option value="180000">3 m</option>
+  </select>
+  <button id="btn" onclick="togglePolling()">▶ Start</button>
+  <span class="last-seen" id="last-seen"></span>
+  <button class="rfu" id="rfu" onclick="requestFU(this)">RFU</button>
+</div>
+<div class="cards">
+  <div class="card" style="--card-accent:var(--accent)">
+    <div class="card-label">Temperature</div>
+    <div class="card-value" id="temp-f"><span class="placeholder">--.-</span></div>
+    <div class="card-unit">°F</div>
+    <div class="card-sub" id="temp-c">–</div>
+  </div>
+  <div class="card" style="--card-accent:var(--accent3)">
+    <div class="card-label">Humidity</div>
+    <div class="card-value" id="hum"><span class="placeholder">--.-</span></div>
+    <div class="card-unit">% RH</div>
+    <div class="card-sub" id="hum-feel">–</div>
+  </div>
+  <div class="card" style="--card-accent:var(--accent2)">
+    <div class="card-label">Pressure</div>
+    <div class="card-value" id="press"><span class="placeholder">----</span></div>
+    <div class="card-unit">hPa</div>
+    <div class="card-sub" id="press-trend">–</div>
+  </div>
+  <div class="card" style="--card-accent:var(--accent4)">
+    <div class="card-label">Gas Resistance</div>
+    <div class="card-value" id="gas"><span class="placeholder">---</span></div>
+    <div class="card-unit">kΩ</div>
+    <div class="card-sub" id="gas-valid">–</div>
+  </div>
+  <div class="card iaq-excellent" id="iaq-card">
+    <div class="card-label">IAQ Score</div>
+    <div class="card-value" id="iaq"><span class="placeholder">---</span></div>
+    <div class="card-unit">/ 500</div>
+    <div class="card-sub" id="iaq-label">–</div>
+  </div>
+</div>
+<div class="iaq-bar-wrap">
+  <div class="iaq-bar-title">Indoor Air Quality gauge (0 = best, 500 = worst)</div>
+  <div class="iaq-track"><div class="iaq-needle" id="iaq-needle" style="left:0%"></div></div>
+  <div class="iaq-scale"><span>0 Excellent</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500 Severe</span></div>
+</div>
+<div class="chart-wrap">
+  <div class="chart-title">History (last <span id="lrdcnt">N</span> readings)<span id="sdetail"></span></div>
+  <div class="chart-tabs">
+    <button class="tab active" onclick="setTab('temperature_f',this)">Temperature</button>
+    <button class="tab" onclick="setTab('humidity_pct',this)">Humidity</button>
+    <button class="tab" onclick="setTab('pressure_hpa',this)">Pressure</button>
+    <button class="tab" onclick="setTab('gas_kohm',this)">Gas</button>
+    <button class="tab" onclick="setTab('iaq',this)">IAQ</button>
+  </div>
+  <div class="graph">
+  	<canvas id="sparkline" height="80"></canvas>
+  	<div id="scrub">
+  		<div id="scrbln"></div>
+  	</div>
+  </div>
+</div>
+<div class="log-wrap" style="display:none">
+  <div class="log-title">Recent readings from server</div>
+  <div id="log"></div>
+</div>
+<script>
+"use strict";
+const scrub = document.getElementById("scrub");
+const scrbln = document.getElementById("scrbln");
+const sdetail = document.getElementById("sdetail");
+const COLORS = {temperature_f:'#00e5c8',humidity_pct:'#a78bfa',pressure_hpa:'#ff6b35',gas_kohm:'#34d399',iaq:'#fbbf24'};
+const UNITS  = {temperature_f:'°F',humidity_pct:'%',pressure_hpa:'hPa',gas_kohm:'kΩ',iaq:'IAQ'};
+const dtfmt = new Intl.DateTimeFormat('en-US', {month: 'numeric',day: 'numeric',year: 'numeric',hour: 'numeric',minute: '2-digit'});
+let readings=[],
+	activeTab='temperature_f',
+	polling=false,
+	timer=null,
+	lastPress=null,
+	lastIdx=0;
+const dot=document.getElementById('dot'),
+	btn=document.getElementById('btn'),
+	logEl=document.getElementById('log'),
+	canvas=document.getElementById('sparkline'),
+	ctx=canvas.getContext('2d');
+function iaqClass (v) {
+	if(v<=50)return'iaq-excellent';
+	if(v<=100)return'iaq-good';
+	if(v<=150)return'iaq-light';
+	if(v<=200)return'iaq-moderate';
+	if(v<=300)return'iaq-heavy';
+	return'iaq-severe';
+}
+function setTab (k,el) {
+	activeTab=k;
+	document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+	el.classList.add('active');
+	drawSparkline();
+	activate(lastIdx);
+}
+function logLine (msg,cls='') {
+	const ts=new Date().toLocaleTimeString();
+	const row=document.createElement('div');
+	if(cls)row.className=cls;
+	row.textContent='['+ts+'] '+msg;
+	logEl.prepend(row);
+	while(logEl.children.length>60)logEl.removeChild(logEl.lastChild);
+}
+async function fetchReadings(){
+  dot.className='status-dot poll';
+  try {
+    const r=await fetch('/api/readings',{signal:AbortSignal.timeout(5000)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    dot.className='status-dot ok';
+    if(!data.length)return;
+    // Update cards with latest
+    update(data[0]);
+    // Replace readings with server data (newest first → reverse for chart)
+    readings=data.slice(0,500).reverse();
+//    readings=data.reverse();
+    document.getElementById('lrdcnt').textContent=readings.length;
+    drawSparkline();
+    // Log new arrivals
+    if(data.length>0){
+      const d=data[0];
+      logLine('T='+d.temperature_f+'°F  H='+d.humidity_pct+'%  P='+d.pressure_hpa+'hPa  Gas='+d.gas_kohm+'kΩ  IAQ='+d.iaq+' ('+d.iaq_label+')  boot#'+d.boot_count,'ok');
+    }
+    const lseen = document.getElementById('last-seen');
+    lseen.textContent='Last reading: '+(tFormat(data[0].server_time)||'–');
+    if ((new Date(data[0].server_time)).valueOf()+600000 < (new Date()).valueOf()) {
+		lseen.classList.add("alert");
+    } else {
+    	lseen.classList.remove("alert");
+    }
+  } catch(e) {
+    dot.className='status-dot err';
+    logLine('Error: '+e.message,'err');
+    console.error('Error: '+e.message);
+  }
+}
+function update(d){
+  document.getElementById('temp-f').textContent=parseFloat(d.temperature_f).toFixed(1);
+  document.getElementById('temp-c').textContent=parseFloat(d.temperature_c).toFixed(1)+' °C';
+  document.getElementById('hum').textContent=parseFloat(d.humidity_pct).toFixed(1);
+  const h=parseFloat(d.humidity_pct);
+  document.getElementById('hum-feel').textContent=h<30?'🏜 Dry':h<50?'✅ Comfortable':h<70?'💧 Humid':'☔ Very humid';
+  document.getElementById('press').textContent=parseFloat(d.pressure_hpa).toFixed(1);
+  if(lastPress!==null){const diff=parseFloat(d.pressure_hpa)-lastPress;document.getElementById('press-trend').textContent=diff>1?'↑ Rising':diff<-1?'↓ Falling':'→ Steady';}
+  lastPress=parseFloat(d.pressure_hpa);
+  document.getElementById('gas').textContent=parseFloat(d.gas_kohm).toFixed(1);
+  document.getElementById('gas-valid').textContent=d.gas_valid?'✅ Valid':'⏳ Warming up';
+  document.getElementById('iaq').textContent=d.iaq;
+  document.getElementById('iaq-label').textContent=d.iaq_label;
+  document.getElementById('iaq-card').className='card '+iaqClass(parseInt(d.iaq));
+  document.getElementById('iaq-needle').style.left=Math.min(parseInt(d.iaq)/500*100,100)+'%';
+}
+function drawSparkline(){
+  const W=canvas.clientWidth,H=canvas.clientHeight;
+  canvas.width=W;canvas.height=H;
+  if(readings.length<2)return;
+  const vals=readings.map(h=>parseFloat(h[activeTab]));
+  const color=COLORS[activeTab],unit=UNITS[activeTab];
+  const minV=Math.min(...vals),maxV=Math.max(...vals);
+  const pad=(maxV-minV)*0.1||0.5,lo=minV-pad,hi=maxV+pad;
+  const sx=i=>(i/(readings.length-1))*W;
+  const sy=v=>H-((v-lo)/(hi-lo))*(H-14)-7;
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,color+'44');grad.addColorStop(1,color+'00');
+  ctx.clearRect(0,0,W,H);
+  ctx.beginPath();readings.forEach((pt,i)=>i===0?ctx.moveTo(sx(i),sy(parseFloat(pt[activeTab]))):ctx.lineTo(sx(i),sy(parseFloat(pt[activeTab]))));
+  ctx.lineTo(sx(readings.length-1),H);ctx.lineTo(0,H);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+  ctx.beginPath();readings.forEach((pt,i)=>i===0?ctx.moveTo(sx(i),sy(parseFloat(pt[activeTab]))):ctx.lineTo(sx(i),sy(parseFloat(pt[activeTab]))));
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.lineJoin='round';ctx.stroke();
+  const last=readings[readings.length-1];
+  ctx.beginPath();ctx.arc(sx(readings.length-1),sy(parseFloat(last[activeTab])),4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+  ctx.font='10px Space Mono,monospace';ctx.fillStyle='#a1aab3';
+  ctx.fillText(maxV.toFixed(1)+' '+unit,4,12);ctx.fillText(minV.toFixed(1)+' '+unit,4,H-4);
+}
+window.addEventListener('resize',drawSparkline);
+function togglePolling(){
+  if(polling){clearInterval(timer);polling=false;btn.textContent='▶ Start';btn.classList.remove('stop');dot.className='status-dot';logLine('Polling stopped');}
+  else{polling=true;btn.textContent='■ Stop';btn.classList.add('stop');logLine('Polling started');fetchReadings();const ms=parseInt(document.getElementById('interval').value,10);timer=setInterval(fetchReadings,ms);}
+}
+
+function tFormat(std) {
+	if (!std) return false;
+	const dObj = new Date(std);
+	return dtfmt.format(dObj);
+}
+
+function activate(idx) {
+	lastIdx = idx;
+	const pct = idx*100;
+	scrbln.style.width = `${pct}%`;
+	scrbln.style.height = "100%";
+	const ix = Math.round(readings.length*idx);	//console.log(ix);
+	const dx = readings[ix];
+	sdetail.innerHTML = ix+" &nbsp&nbsp "+ tFormat(dx.server_time) + String(dx[activeTab]).padStart(10, '\xA0') +' '+ UNITS[activeTab];
+}
+
+function deactivate() {
+	scrbln.style.width = 0;
+	scrbln.style.height = 0;
+	sdetail.innerText = '';
+}
+
+function getIndexFromX(clientX) {
+  const rect = scrub.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const pct = Math.max(0, Math.min(0.9999, x / rect.width));
+  return pct;
+}
+
+async function waitFU () {
+  try {
+    const r = await fetch('/api/rfu',{signal:AbortSignal.timeout(360000)});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    return data;
+  } catch(e) {
+    logLine('Error: '+e.message,'err');
+    console.error('Error: '+e.message);
+  }
+}
+
+function requestFU (elm) {
+	if (!polling) {
+		alert("You must be actively polling the server for a firmware update sequence to be initiated.");
+		return;
+	}
+	elm.classList.add("wait");
+	waitFU().then(data=>{
+		elm.classList.remove("wait");
+		console.log(data);
+		const uurl = 'http://'+data.IP.split(':').pop()+':6680/update';
+		window.open(uurl, '_blank');
+	});
+}
+
+// Mouse events
+scrub.addEventListener("mousemove",  e => activate(getIndexFromX(e.clientX)));
+//scrub.addEventListener("mouseleave", deactivate);
+scrub.addEventListener("mousedown",  e => { scrub.style.cursor = "grabbing"; activate(getIndexFromX(e.clientX)); });
+window.addEventListener("mouseup",   () => { scrub.style.cursor = "crosshair"; });
+
+// Touch events
+scrub.addEventListener("touchstart", e => { e.preventDefault(); activate(getIndexFromX(e.touches[0].clientX)); }, { passive: false });
+scrub.addEventListener("touchmove",  e => { e.preventDefault(); activate(getIndexFromX(e.touches[0].clientX)); }, { passive: false });
+
+</script>
+</body>
+</html>
